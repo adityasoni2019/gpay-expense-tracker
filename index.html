@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expenditure Calculator</title>
+
+    
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid black;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .total-expenditure {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Steps to use</h1>
+
+    <div>
+        <br> 1. go to - https://takeout.google.com/ 
+        <br> 2. Make sure Google Pay is turned on. You can turn off any Google apps or services you don’t want to export data from.
+        <br> 3. Click Next step.
+        <br> 4. Select your file type, frequency, and destination.
+        <br> 5. Click Create export.
+        <br> 6. Now in the folder that has been downloaded, upload the file in the "My Activity" folder. It'll be an html file named - 'My Activity.html'
+    </div>
+    <br><br>
+    <input type="file" id="fileInput" accept=".html">
+
+    <label for="monthSelect">Select Month:</label>
+    <select id="monthSelect">
+        <option value="Jan">January</option>
+        <option value="Feb">February</option>
+        <option value="Mar">March</option>
+        <option value="Apr">April</option>
+        <option value="May">May</option>
+        <option value="Jun">June</option>
+        <option value="Jul">July</option>
+        <option value="Aug">August</option>
+        <option value="Sep">September</option>
+        <option value="Oct">October</option>
+        <option value="Nov">November</option>
+        <option value="Dec">December</option>
+    </select>
+
+    <label for="yearInput">Enter Year:</label>
+    <input type="text" id="yearInput" placeholder="YYYY">
+
+    <button onclick="filterTransactions()">Filter Transactions</button>
+
+    <div id="totalExpenditure" class="total-expenditure"></div>
+
+
+    <div id="contentContainer">
+        <div id="pieChartContainer">
+            <canvas id="pieChart" width="600" height="600"></canvas>
+        </div>
+        <div id="transactionsTable"></div>
+
+        <br></br>
+        <br></br>
+        <br></br>
+        <br></br>
+        Other transactions: 
+        <div id="otherTransactionsTable"></div>
+
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        let myChart = null; // This will hold the chart instance
+
+        document.getElementById('fileInput').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const htmlContent = e.target.result;
+                    parseHTML(htmlContent);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        let transactionsData = [];
+
+        function parseHTML(htmlContent) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlContent, 'text/html');
+            const transactionElements = doc.querySelectorAll('.outer-cell.mdl-cell.mdl-cell--12-col.mdl-shadow--2dp');
+
+            transactionsData = [];
+
+            transactionElements.forEach(transactionElement => {
+                const headerCell = transactionElement.querySelector('.header-cell.mdl-cell.mdl-cell--12-col');
+                const contentCells = transactionElement.querySelectorAll('.content-cell.mdl-cell.mdl-cell--6-col.mdl-typography--body-1');
+                const captionCell = transactionElement.querySelector('.content-cell.mdl-cell.mdl-cell--12-col.mdl-typography--caption');
+
+                if (headerCell && contentCells.length > 0 && captionCell) {
+                    const title = headerCell.querySelector('.mdl-typography--title');
+                    const paidToText = contentCells[0].innerHTML.replace(/<br>/g, '\n');
+
+                    let paidTo = 'Unknown';
+                    let dateTime = 'Unknown';
+                    let amount = 0;
+                    let month = 'Unknown';
+                    let date = 'Unknown';
+                    let year = 'Unknown';
+
+                    if (title && title.innerText.includes('Google Pay')) {
+                        // Extract paidTo, amount, and dateTime separately
+                        const match = paidToText.match(/Paid ₹(.*) to (.*)\n(.*)/);
+                        if (match && match.length === 4) {
+                            amount = parseFloat(match[1].trim().replace(',', '')); // Remove commas from amount and parse float
+                            paidTo = match[2].trim().toLowerCase(); // Normalize paidTo to lowercase
+                            dateTime = match[3].trim();
+
+                            // Remove additional info from paidTo if it includes "using Bank Account"
+                            if (paidTo.includes('using bank account')) {
+                                paidTo = paidTo.split('using bank account')[0].trim();
+                            }
+
+                            // Extract month, date, and year from dateTime
+                            const dateTimeParts = dateTime.split(',');
+                            if (dateTimeParts.length === 3) {
+                                const dateStr = dateTimeParts[0].trim();
+                                const yearStr = dateTimeParts[1].trim();
+                                const timeStr = dateTimeParts[2].trim();
+
+                                const dateParts = dateStr.split(' ');
+                                if (dateParts.length === 2) {
+                                    month = dateParts[0];
+                                    date = dateParts[1];
+                                }
+
+                                year = yearStr.split(' ')[0]; // Extract only the year
+                            }
+                        }
+                    }
+
+                    // Add the transaction object with only required keys to transactionsData array
+                    if (paidTo !== 'Unknown') {
+                        transactionsData.push({
+                            paidTo: paidTo,
+                            amount: amount,
+                            month: month,
+                            date: date,
+                            year: year
+                        });
+                    }
+                }
+            });
+
+            console.log(JSON.stringify(transactionsData, null, 4));
+        }
+
+
+
+        function filterTransactions() {
+            const selectedMonth = document.getElementById('monthSelect').value.toLowerCase(); // Convert selected month to lowercase
+            const selectedYear = document.getElementById('yearInput').value.trim();
+
+            const filteredTransactions = transactionsData.filter(transaction => {
+                return transaction.month.toLowerCase() === selectedMonth && transaction.year === selectedYear;
+            });
+
+
+            renderTransactions(filteredTransactions);
+            renderPieChart(filteredTransactions); // Update the pie chart with filtered data
+
+        }
+
+
+        function renderTransactions(transactions) {
+            const transactionsTable = document.getElementById('transactionsTable');
+            const totalExpenditure = document.getElementById('totalExpenditure');
+
+            // Clear previous content
+            transactionsTable.innerHTML = '';
+            totalExpenditure.textContent = '';
+
+            // Create table header
+            const table = document.createElement('table');
+            const headerRow = table.insertRow();
+            const headers = ['Paid To', 'Date', 'Month', 'Year', 'Amount'];
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                headerRow.appendChild(th);
+            });
+
+            // Populate table rows with transaction data
+            transactions.forEach(transaction => {
+                const row = table.insertRow();
+                const cellPaidTo = row.insertCell();
+                const cellDate = row.insertCell();
+                const cellMonth = row.insertCell();
+                const cellYear = row.insertCell();
+                const cellAmount = row.insertCell();
+
+                cellPaidTo.textContent = transaction.paidTo;
+                cellDate.textContent = transaction.date;
+                cellMonth.textContent = transaction.month;
+                cellYear.textContent = transaction.year;
+                cellAmount.textContent = `₹${transaction.amount}`;
+            });
+
+            transactionsTable.appendChild(table);
+
+            // Calculate and display total expenditure
+            const totalAmount = transactions.reduce((total, transaction) => total + transaction.amount, 0);
+            totalExpenditure.textContent = `Total Expenditure: ₹${totalAmount}`;
+        }
+
+        function renderOtherTransactionsTable(otherTransactions) {
+            const tableContainer = document.getElementById('otherTransactionsTable');
+            tableContainer.innerHTML = ''; // Clear previous contents
+
+            const table = document.createElement('table');
+            const headerRow = table.insertRow();
+            const headers = ['Paid To', 'Date', 'Month', 'Year', 'Amount'];
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                headerRow.appendChild(th);
+            });
+
+            // Populate table rows with transaction data
+            otherTransactions.forEach(transaction => {
+                const row = table.insertRow();
+                row.insertCell().textContent = transaction.paidTo;
+                row.insertCell().textContent = transaction.date;
+                row.insertCell().textContent = transaction.month;
+                row.insertCell().textContent = transaction.year;
+                row.insertCell().textContent = `₹${transaction.amount}`;
+            });
+
+            tableContainer.appendChild(table);
+        }
+
+        // Function to render pie chart
+
+        function renderPieChart(transactions) {
+            if (myChart) {
+                myChart.destroy();
+            }
+            let otherTransactions = []; // Array to store transactions that go into "Other"
+
+
+            const paidToMap = new Map();
+
+
+            // Aggregate transactions by paidTo
+            transactions.forEach(transaction => {
+                const key = transaction.paidTo.toLowerCase(); // Normalize the key to lowercase
+                const amount = transaction.amount;
+                if (paidToMap.has(key)) {
+                    let data = paidToMap.get(key);
+                    data.totalAmount += amount;
+                    data.count += 1;
+                    data.transactions.push(transaction); // Store the transaction for potential display
+                    if (amount > 5000) {
+                        data.overTenThousand = true;
+                    }
+                    paidToMap.set(key, data);
+                } else {
+                    paidToMap.set(key, {
+                        totalAmount: amount,
+                        count: 1,
+                        overTenThousand: amount > 5000 ? true : false,
+                        transactions: [transaction] // Initialize with the current transaction
+                    });
+                }
+            });
+            // Now, prepare data for Chart.js
+            const pieData = [];
+            let otherTotal = 0;
+
+            paidToMap.forEach((data, paidTo) => {
+                if (data.count > 3 || data.overTenThousand) {
+                    pieData.push({
+                        label: paidTo,
+                        amount: data.totalAmount,
+                        color: getRandomColor()
+                    });
+                } else {
+                    otherTotal += data.totalAmount;
+                    otherTransactions = otherTransactions.concat(data.transactions); // Collect all 'Other' transactions
+                }
+            });
+
+            if (otherTotal > 0) {
+                pieData.push({
+                    label: "Other",
+                    amount: otherTotal,
+                    color: getRandomColor()
+                });
+            }
+
+            renderOtherTransactionsTable(otherTransactions); // Call function to render the 'Other' transactions table
+
+            // Generate the chart
+            const pieLabels = pieData.map(data => data.label);
+            const pieAmounts = pieData.map(data => data.amount);
+            const pieColors = pieData.map(data => data.color);
+
+            const pieChartCanvas = document.getElementById('pieChart').getContext('2d');
+            myChart = new Chart(pieChartCanvas, {
+                type: 'pie',
+                data: {
+                    labels: pieLabels,
+                    datasets: [{
+                        data: pieAmounts,
+                        backgroundColor: pieColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (tooltipItem) {
+                                    return `${tooltipItem.label}: ₹${tooltipItem.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        // Helper function to generate random colors
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+
+    </script>
+</body>
+
+</html>
