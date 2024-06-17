@@ -165,7 +165,7 @@
                     }
 
                     // Add the transaction object with only required keys to transactionsData array
-                    if (paidTo !== 'Unknown') {
+                    if (paidTo !== 'Unknown' || paidTo !== 'unknown') {
                         transactionsData.push({
                             paidTo: paidTo,
                             amount: amount,
